@@ -1606,6 +1606,39 @@ export async function renderStatusPage(): Promise<string> {
     setInterval(() => {
       fetchDashboard(false);
     }, 5000);
+
+    // Auto-refresh: re-run every active site's checks once a minute, as long as this
+    // dashboard stays open. (Vercel's own cron is capped at once/day on the Hobby plan,
+    // so this is what actually keeps results current between visits.)
+    const AUTO_CHECK_INTERVAL_MS = 60_000;
+    let autoCheckRunning = false;
+    let nextAutoCheckAt = Date.now() + AUTO_CHECK_INTERVAL_MS;
+
+    async function autoRunChecks() {
+      if (autoCheckRunning) return;
+      autoCheckRunning = true;
+      const countdown = document.getElementById('refreshCountdown');
+      if (countdown) countdown.textContent = 'Checking…';
+      try {
+        await fetch('/api/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        await fetchDashboard(false);
+      } catch (err) {
+        console.error('Auto-refresh run failed', err);
+      } finally {
+        autoCheckRunning = false;
+        nextAutoCheckAt = Date.now() + AUTO_CHECK_INTERVAL_MS;
+      }
+    }
+
+    setInterval(autoRunChecks, AUTO_CHECK_INTERVAL_MS);
+
+    // Ticks the header countdown every second so it stays live between runs.
+    setInterval(() => {
+      const countdown = document.getElementById('refreshCountdown');
+      if (!countdown || autoCheckRunning) return;
+      const secsLeft = Math.max(0, Math.round((nextAutoCheckAt - Date.now()) / 1000));
+      countdown.textContent = 'Next auto-check in ' + secsLeft + 's';
+    }, 1000);
   </script>
 </body>
 </html>`;

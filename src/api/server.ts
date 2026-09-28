@@ -434,11 +434,10 @@ app.post('/api/runs', async (req, reply) => {
   const { siteIds } = z.object({ siteIds: z.array(z.number().int().positive()).optional() }).parse(req.body ?? {});
   const ids = siteIds ?? (await pool.query<{ id: number }>('SELECT id FROM sites WHERE is_active')).rows.map((r) => r.id);
   for (const id of ids) {
-    try {
-      await enqueueCycle(id, 'manual');
-    } catch {
-      await runCycle(id, 'manual');
-    }
+    // enqueueCycle() never throws — it resolves false whenever Redis/the queue isn't available
+    // (always true on Vercel), so the cycle has to be run directly here or it silently never happens.
+    const queued = await enqueueCycle(id, 'manual');
+    if (!queued) await runCycle(id, 'manual');
   }
   return reply.code(202).send({ queued: ids.length });
 });

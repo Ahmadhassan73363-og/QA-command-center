@@ -33,15 +33,17 @@ export function getQueue(): Queue {
   return queue;
 }
 
-export async function enqueueCycle(siteId: number, trigger: CycleJob['trigger']): Promise<void> {
-  if (process.env.VERCEL) return;
+/** Returns true once actually enqueued. Never throws — callers must run the cycle directly on false. */
+export async function enqueueCycle(siteId: number, trigger: CycleJob['trigger']): Promise<boolean> {
+  if (process.env.VERCEL) return false;
   try {
     await Promise.race([
       getQueue().add('cycle', { siteId, trigger } satisfies CycleJob),
       new Promise((_, reject) => setTimeout(() => reject(new Error('Redis timeout')), 1000)),
     ]);
+    return true;
   } catch {
-    // Redis unavailable, ignored
+    return false; // Redis unavailable
   }
 }
 

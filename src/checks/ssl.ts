@@ -43,7 +43,7 @@ registerCheck({
     }
     const warn = asNumber(ctx.config.thresholds.ssl_days_warn, 14);
     const crit = asNumber(ctx.config.thresholds.ssl_days_crit, 7);
-    const peer = await peerCertificate(url.hostname, Number(url.port || 443), 7_000);
+    const peer = await peerCertificate(url.hostname, Number(url.port || 443), 4_000);
     const daysLeft = Math.floor((Date.parse(peer.validTo) - Date.now()) / 86_400_000);
     const expected = { valid: true, min_days: warn };
     const actual = { valid: peer.authorized, days_left: daysLeft, valid_to: peer.validTo, issuer: peer.issuer };

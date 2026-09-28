@@ -68,11 +68,23 @@ export async function runCycle(siteId, trigger) {
         if (result.errorCode === 'blocked_by_bot_protection')
             return; // amber, never downtime
         await resetPasses(site.id, type);
-        try {
-            await enqueueConfirm({ siteId: site.id, checkType: type, attempt: 2, runId }, cfg.retry.delaysMs[0] ?? 15_000);
+        // On Vercel or during manual instant audits, record incident immediately without blocking on Redis
+        if (process.env.VERCEL || trigger === 'manual') {
+            try {
+                const displayName = def.displayName ?? type;
+                await openIncident(site, type, summarize(displayName, result), result, severityOf(result));
+            }
+            catch (incErr) {
+                console.error(`[runner] error opening incident:`, incErr);
+            }
         }
-        catch (err) {
-            console.warn(`[runner] confirm queue unavailable, skipping retry: ${err.message}`);
+        else {
+            try {
+                await enqueueConfirm({ siteId: site.id, checkType: type, attempt: 2, runId }, cfg.retry.delaysMs[0] ?? 15_000);
+            }
+            catch (err) {
+                console.warn(`[runner] confirm queue unavailable, skipping retry: ${err.message}`);
+            }
         }
     }));
     if (http.headFallbackUsed && !site.head_unsupported) {

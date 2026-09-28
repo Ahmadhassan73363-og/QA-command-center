@@ -37,7 +37,7 @@ function requestHeaders(): Record<string, string> {
 export async function probe(url: string, opts: ProbeOptions = {}): Promise<ProbeResult> {
   const method = opts.method ?? 'GET';
   const maxHops = opts.maxHops ?? 10;
-  const signal = AbortSignal.timeout(opts.timeoutMs ?? 10_000);
+  const signal = AbortSignal.timeout(opts.timeoutMs ?? 6_000);
   const hops: Hop[] = [];
   const start = performance.now();
   let current = url;

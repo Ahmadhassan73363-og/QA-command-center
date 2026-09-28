@@ -16,7 +16,12 @@ export interface ConfirmJob {
   runId: string;
 }
 
-export const redisConnection = (): Redis => new Redis(config.redisUrl, { maxRetriesPerRequest: null });
+export const redisConnection = (): Redis => new Redis(config.redisUrl, {
+  maxRetriesPerRequest: 1,
+  connectTimeout: 800,
+  retryStrategy: () => null,
+  enableOfflineQueue: false,
+});
 
 let queue: Queue | undefined;
 
@@ -29,11 +34,26 @@ export function getQueue(): Queue {
 }
 
 export async function enqueueCycle(siteId: number, trigger: CycleJob['trigger']): Promise<void> {
-  await getQueue().add('cycle', { siteId, trigger } satisfies CycleJob);
+  if (process.env.VERCEL) return;
+  try {
+    await Promise.race([
+      getQueue().add('cycle', { siteId, trigger } satisfies CycleJob),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Redis timeout')), 1000)),
+    ]);
+  } catch {
+    // Redis unavailable, ignored
+  }
 }
 
 export async function enqueueConfirm(job: ConfirmJob, delayMs: number): Promise<void> {
-  // Deterministic id: a duplicate confirm for the same run + attempt is ignored.
-  const jobId = `confirm-${job.siteId}-${job.checkType}-${job.runId}-${job.attempt}`;
-  await getQueue().add('confirm', job, { delay: delayMs, jobId });
+  if (process.env.VERCEL) return;
+  try {
+    const jobId = `confirm-${job.siteId}-${job.checkType}-${job.runId}-${job.attempt}`;
+    await Promise.race([
+      getQueue().add('confirm', job, { delay: delayMs, jobId }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Redis timeout')), 1000)),
+    ]);
+  } catch {
+    // Redis unavailable, ignored
+  }
 }

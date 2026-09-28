@@ -11,7 +11,7 @@ function requestHeaders() {
 export async function probe(url, opts = {}) {
     const method = opts.method ?? 'GET';
     const maxHops = opts.maxHops ?? 10;
-    const signal = AbortSignal.timeout(opts.timeoutMs ?? 10_000);
+    const signal = AbortSignal.timeout(opts.timeoutMs ?? 6_000);
     const hops = [];
     const start = performance.now();
     let current = url;

@@ -467,7 +467,7 @@ export async function renderStatusPage(): Promise<string> {
       align-items: center;
       gap: 4px;
     }
-    .check-tag.pass { border-color: rgba(34, 197, 94, 0.3); color: var(--ok); }
+    .check-tag.pass, .check-tag.flaky { border-color: rgba(34, 197, 94, 0.3); color: var(--ok); }
     .check-tag.warn { border-color: rgba(234, 179, 8, 0.3); color: var(--warn); }
     .check-tag.fail { border-color: rgba(239, 68, 68, 0.3); color: var(--crit); }
 
@@ -1032,14 +1032,17 @@ export async function renderStatusPage(): Promise<string> {
 
     // Maps a check's raw status ('pass'/'warn'/'fail'/'error') to the status-badge
     // CSS modifier ('ok'/'warn'/'crit'/'pending') — the two vocabularies differ.
+    // 'flaky' = failed once but passed on the immediate same-run recheck — treated as
+    // healthy everywhere in the UI, same as the server-side aggregate counts.
     function badgeClass(status) {
-      if (status === 'pass') return 'ok';
+      if (status === 'pass' || status === 'flaky') return 'ok';
       if (status === 'warn') return 'warn';
       if (status === 'fail' || status === 'error') return 'crit';
       return 'pending';
     }
     function badgeLabel(status) {
       if (status === 'pass') return 'Pass';
+      if (status === 'flaky') return 'Pass (confirmed after retry)';
       if (status === 'warn') return 'Warning';
       if (status === 'fail' || status === 'error') return 'Fail';
       return 'Pending';
@@ -1069,7 +1072,7 @@ export async function renderStatusPage(): Promise<string> {
 
     // Renders "which check failed and why" as a colored banner plus a remedy hint, for one check.
     function diagReasonBanner(check) {
-      if (!check || check.status === 'pass') return '';
+      if (!check || check.status === 'pass' || check.status === 'flaky') return '';
       const cls = (check.status === 'fail' || check.status === 'error') ? 'crit' : 'warn';
       const msg = check.error_message || (check.check_type + ' did not pass, no further detail recorded');
       const remedy = REMEDY_HINTS[check.error_code];

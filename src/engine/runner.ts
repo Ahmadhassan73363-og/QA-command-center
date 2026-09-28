@@ -3,6 +3,7 @@ import { pool } from '../db/pool.js';
 import { config } from '../config.js';
 import { getCheck } from '../checks/index.js';
 import type { CheckDefinition, CheckContext, CheckResult, SiteRecord } from '../checks/types.js';
+import type { ResolvedConfig } from '../profiles/resolve.js';
 import { classifyError, SiteHttp } from '../lib/http.js';
 import { enqueueConfirm, type ConfirmJob } from './queue.js';
 import { openIncident, recordPass, resetPasses, summarize } from './incidents.js';
@@ -62,6 +63,41 @@ async function saveResult(
 
 const severityOf = (r: CheckResult): 'warn' | 'critical' => (r.status === 'warn' ? 'warn' : 'critical');
 
+// Single-sample network blips (a slow cold connection, a momentary CDN miss) shouldn't
+// open an incident on their own. Non-passing checks get one same-request re-probe first.
+const CONFIRM_DELAY_MS = 2_000;
+
+/**
+ * One immediate, same-request re-check for a non-passing result — no Redis needed. Uses a
+ * fresh SiteHttp (not the cycle's shared one) so the retry is a real new probe, not a cached
+ * replay of the first result. A pass on retry is recorded as 'flaky', matching what the
+ * Redis-based confirm path (runConfirm) would have done; still-failing opens the incident.
+ */
+async function confirmBeforeIncident(
+  def: CheckDefinition,
+  site: SiteRecord,
+  cfg: ResolvedConfig,
+  checkConfig: Record<string, unknown>,
+  type: string,
+  runId: string,
+): Promise<void> {
+  await new Promise((r) => setTimeout(r, CONFIRM_DELAY_MS));
+  const retryHttp = new SiteHttp(site.url, site.head_unsupported);
+  const retry = await executeCheck(def, { site, config: cfg, checkConfig, http: retryHttp });
+
+  if (retry.status === 'pass') {
+    await saveResult(site.id, type, runId, 2, retry, 'flaky');
+    return;
+  }
+  await saveResult(site.id, type, runId, 2, retry);
+  try {
+    const displayName = def.displayName ?? type;
+    await openIncident(site, type, summarize(displayName, retry), retry, severityOf(retry));
+  } catch (incErr) {
+    console.error(`[runner] error opening incident:`, incErr);
+  }
+}
+
 /** A scheduled cycle: every enabled check for one site, then fast-confirm any failures. */
 export async function runCycle(siteId: number, trigger: 'schedule' | 'manual'): Promise<void> {
   const site = await loadSite(siteId);
@@ -90,14 +126,10 @@ export async function runCycle(siteId: number, trigger: 'schedule' | 'manual'): 
       if (result.errorCode === 'blocked_by_bot_protection') return; // amber, never downtime
       await resetPasses(site.id, type);
 
-      // On Vercel or during manual instant audits, record incident immediately without blocking on Redis
+      // On Vercel or during manual instant audits, confirm with one same-request retry
+      // instead of blocking on Redis.
       if (process.env.VERCEL || trigger === 'manual') {
-        try {
-          const displayName = def.displayName ?? type;
-          await openIncident(site, type, summarize(displayName, result), result, severityOf(result));
-        } catch (incErr) {
-          console.error(`[runner] error opening incident:`, incErr);
-        }
+        await confirmBeforeIncident(def, site, cfg, checkConfig, type, runId);
       } else {
         try {
           await enqueueConfirm({ siteId: site.id, checkType: type, attempt: 2, runId }, cfg.retry.delaysMs[0] ?? 15_000);

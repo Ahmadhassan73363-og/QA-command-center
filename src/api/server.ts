@@ -117,7 +117,7 @@ app.get('/api/dashboard/stats', async () => {
             FROM (
               SELECT r.id, r.started_at,
                 COUNT(c.id)::int AS total,
-                COUNT(CASE WHEN c.status = 'pass' THEN 1 END)::int AS passed,
+                COUNT(CASE WHEN c.status IN ('pass', 'flaky') THEN 1 END)::int AS passed,
                 COUNT(CASE WHEN c.status = 'warn' THEN 1 END)::int AS warned,
                 COUNT(CASE WHEN c.status IN ('fail','error') THEN 1 END)::int AS failed,
                 AVG(c.response_time_ms)::int AS latency_ms
@@ -174,7 +174,7 @@ app.get('/api/dashboard/stats', async () => {
   for (const s of sites) {
     for (const c of s.checks) {
       totalChecks++;
-      if (c.status === 'pass') passedChecks++;
+      if (c.status === 'pass' || c.status === 'flaky') passedChecks++;
       else if (c.status === 'warn') warnChecks++;
       else if (c.status === 'fail' || c.status === 'error') failChecks++;
       if (c.response_time_ms != null && c.response_time_ms > 0) {
@@ -214,7 +214,7 @@ app.get('/api/sites/:id/history', async (req) => {
         r.started_at,
         r.finished_at,
         COUNT(c.id)::int AS total_checks,
-        COUNT(CASE WHEN c.status = 'pass' THEN 1 END)::int AS passed_checks,
+        COUNT(CASE WHEN c.status IN ('pass', 'flaky') THEN 1 END)::int AS passed_checks,
         COUNT(CASE WHEN c.status = 'warn' THEN 1 END)::int AS warn_checks,
         COUNT(CASE WHEN c.status IN ('fail', 'error') THEN 1 END)::int AS fail_checks,
         AVG(c.response_time_ms)::int AS avg_ms
@@ -292,7 +292,7 @@ app.post('/api/audit', async (req, reply) => {
     [site.id],
   );
 
-  const passed = checks.filter((c) => c.status === 'pass').length;
+  const passed = checks.filter((c) => c.status === 'pass' || c.status === 'flaky').length;
   const warned = checks.filter((c) => c.status === 'warn').length;
   const failed = checks.filter((c) => c.status === 'fail' || c.status === 'error').length;
   const total = checks.length;

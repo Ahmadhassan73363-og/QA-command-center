@@ -619,12 +619,13 @@ export async function renderStatusPage(): Promise<string> {
       align-items: center;
       gap: 5px;
     }
-    .snapshot-frame, .card-thumb iframe {
+    .snapshot-frame, .card-thumb img {
       width: 100%;
       height: 100%;
       border: 0;
+      object-fit: cover;
+      object-position: top;
       background: #09090b;
-      pointer-events: none;
     }
     .snapshot-note {
       padding: 6px 12px;
@@ -633,6 +634,32 @@ export async function renderStatusPage(): Promise<string> {
       text-align: center;
       border-top: 1px solid var(--border-subtle);
     }
+    .thumb-fallback, .snapshot-fallback {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
+      text-align: center;
+      color: var(--fg-subtle);
+      font-size: 9px;
+      padding: 4px;
+    }
+    .snapshot-fallback {
+      font-size: 11px;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .snapshot-refresh-btn {
+      background: transparent;
+      border: none;
+      color: var(--fg-muted);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      padding: 0;
+    }
+    .snapshot-refresh-btn:hover { color: #fff; }
 
     /* Modal / Slide-out Drawer */
     .drawer-overlay {
@@ -1188,8 +1215,10 @@ export async function renderStatusPage(): Promise<string> {
               + '</a>'
             + '</div>'
             + '<div style="display:flex; align-items:flex-start; gap:8px; flex-shrink:0;">'
-              + '<div class="card-thumb" title="Live preview (may be blank if the site blocks embedding)" onclick="openDrawer(' + site.id + ')">'
-                + '<iframe src="' + esc(site.url) + '" loading="lazy" sandbox="allow-scripts allow-same-origin" referrerpolicy="no-referrer" tabindex="-1" aria-hidden="true"></iframe>'
+              + '<div class="card-thumb" title="Live snapshot" onclick="openDrawer(' + site.id + ')">'
+                + '<img src="/api/sites/' + site.id + '/screenshot" loading="lazy" alt="" '
+                  + 'onerror="this.style.display=\\'none\\'; this.nextElementSibling.style.display=\\'flex\\';">'
+                + '<span class="thumb-fallback">No preview</span>'
               + '</div>'
               + '<span class="status-badge ' + st + '">' + (st === 'ok' ? 'Healthy' : st === 'warn' ? 'Warning' : st === 'crit' ? 'Critical' : 'Pending') + '</span>'
             + '</div>'
@@ -1336,6 +1365,26 @@ export async function renderStatusPage(): Promise<string> {
       }
     }
 
+    // Force a fresh headless-browser capture for the drawer's live snapshot (bypasses the 5-min cache).
+    // Reassigning img.onload/onerror here replaces the inline HTML attributes, so both the spin
+    // reset AND the show/hide-fallback behavior have to be re-applied inside these handlers.
+    function refreshSnapshot(siteId, btn) {
+      btn.classList.add('spin');
+      const img = document.getElementById('snapshotImg');
+      if (!img) return;
+      img.onload = () => {
+        btn.classList.remove('spin');
+        img.style.display = 'block';
+        img.nextElementSibling.style.display = 'none';
+      };
+      img.onerror = () => {
+        btn.classList.remove('spin');
+        img.style.display = 'none';
+        img.nextElementSibling.style.display = 'flex';
+      };
+      img.src = '/api/sites/' + siteId + '/screenshot?refresh=true&t=' + Date.now();
+    }
+
     // Run All Audits
     async function runAllAudits() {
       const btn = document.getElementById('btnRunAll');
@@ -1423,15 +1472,26 @@ export async function renderStatusPage(): Promise<string> {
           // Live Snapshot
           '<div class="snapshot-card">'
             + '<div class="snapshot-top">'
-              + '<span>LIVE PREVIEW</span>'
-              + '<a href="' + esc(site.url) + '" target="_blank" rel="noopener noreferrer" class="site-link" style="margin:0;">Open site '
-                + '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></svg>'
-              + '</a>'
+              + '<span>LIVE SNAPSHOT</span>'
+              + '<div style="display:flex; align-items:center; gap:12px;">'
+                + '<button class="snapshot-refresh-btn" title="Capture a fresh snapshot" onclick="refreshSnapshot(' + site.id + ', this)">'
+                  + '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>'
+                + '</button>'
+                + '<a href="' + esc(site.url) + '" target="_blank" rel="noopener noreferrer" class="site-link" style="margin:0;">Open site '
+                  + '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></svg>'
+                + '</a>'
+              + '</div>'
             + '</div>'
-            + '<div class="snapshot-viewport">'
-              + '<iframe class="snapshot-frame" src="' + esc(site.url) + '" loading="lazy" sandbox="allow-scripts allow-same-origin" referrerpolicy="no-referrer"></iframe>'
+            + '<div class="snapshot-viewport" id="snapshotViewport">'
+              + '<img class="snapshot-frame" id="snapshotImg" src="/api/sites/' + site.id + '/screenshot" alt="" '
+                + 'onerror="this.style.display=\\'none\\'; this.nextElementSibling.style.display=\\'flex\\';" '
+                + 'onload="this.style.display=\\'block\\'; this.nextElementSibling.style.display=\\'none\\';">'
+              + '<div class="snapshot-fallback">'
+                + '<span>⚠ Snapshot unavailable</span>'
+                + '<span style="color:var(--fg-subtle);">The monitor could not render this page (it may be slow, offline, or blocking automated browsers).</span>'
+              + '</div>'
             + '</div>'
-            + '<div class="snapshot-note">Live embedded preview, not a stored image — some sites block embedding via X-Frame-Options/CSP and will render blank.</div>'
+            + '<div class="snapshot-note">Real headless-browser capture, cached up to 5 minutes — not a live embed, so it renders regardless of X-Frame-Options or CSP.</div>'
           + '</div>'
 
           // Availability Box

@@ -7,6 +7,7 @@ import { listChecks } from '../checks/index.js';
 import { enqueueCycle, getQueue } from '../engine/queue.js';
 import { runCycle } from '../engine/runner.js';
 import { renderStatusPage } from './statusPage.js';
+import { captureScreenshot } from '../lib/screenshot.js';
 import {
   createSite, deleteSite, errorText, getSite, importSites, listSites, updateSite, type SiteRow,
 } from '../sites/service.js';
@@ -378,6 +379,32 @@ app.get('/api/sites/:id/checks', async (req) => {
     [id, q.type ?? null, q.limit],
   );
   return rows;
+});
+
+// ---- Site Screenshot (real headless-browser capture, not an embedded iframe) -----
+// Navigating directly bypasses X-Frame-Options/CSP entirely; a small in-memory cache
+// keeps repeated dashboard polls from re-launching Chromium every few seconds.
+const SCREENSHOT_TTL_MS = 5 * 60_000;
+const screenshotCache = new Map<number, { at: number; buf: Buffer }>();
+
+app.get('/api/sites/:id/screenshot', async (req, reply) => {
+  const { id } = idParam.parse(req.params);
+  const { refresh } = z.object({ refresh: z.coerce.boolean().default(false) }).parse(req.query);
+
+  const cached = screenshotCache.get(id);
+  if (!refresh && cached && Date.now() - cached.at < SCREENSHOT_TTL_MS) {
+    return reply.type('image/png').header('cache-control', 'public, max-age=300').send(cached.buf);
+  }
+
+  const site = await getSite(id);
+  try {
+    const buf = await captureScreenshot(site.url);
+    screenshotCache.set(id, { at: Date.now(), buf });
+    return reply.type('image/png').header('cache-control', 'public, max-age=300').send(buf);
+  } catch (err) {
+    app.log.error(err);
+    return reply.code(502).send({ error: `screenshot capture failed: ${errorText(err)}` });
+  }
 });
 
 // ---- Incidents -----------------------------------------------------------------

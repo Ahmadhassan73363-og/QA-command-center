@@ -23,4 +23,7 @@ export const config = {
   workerId: env('WORKER_ID', os.hostname()),
   probeRegion: env('PROBE_REGION', 'local'),
   tier1EveryMs: Number(env('TIER1_EVERY_MS', String(10 * 60 * 1000))),
+  // Local/dev only: path to a real Chrome/Chromium/Edge binary for screenshot capture.
+  // On Vercel/AWS Lambda, @sparticuz/chromium supplies its own binary instead.
+  chromePath: env('CHROME_PATH', ''),
 };

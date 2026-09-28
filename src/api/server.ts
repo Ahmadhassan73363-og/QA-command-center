@@ -419,6 +419,6 @@ app.post('/api/runs', async (req, reply) => {
 app.setNotFoundHandler((_req, reply) => reply.code(404).send({ error: 'not found' }));
 
 // Start listening if not running in serverless / Vercel
-if (!process.env.VERCEL) {
+if (!process.env.VERCEL && !process.env.AWS_LAMBDA_FUNCTION_NAME && !process.env.VERCEL_ENV && !process.env.NOW_REGION) {
   await app.listen({ port: config.port, host: '0.0.0.0' });
 }

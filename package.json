@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "tsc -p .",
+    "vercel-build": "tsc -p .",
     "typecheck": "tsc -p . --noEmit",
     "migrate": "tsx src/db/migrate.ts",
     "dev:api": "tsx watch src/api/server.ts",

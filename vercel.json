@@ -1,11 +1,21 @@
 {
   "version": 2,
-  "buildCommand": "npm run build",
-  "installCommand": "npm ci",
-  "rewrites": [
+  "builds": [
     {
-      "source": "/(.*)",
-      "destination": "/api/index.js"
+      "src": "api/index.js",
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": [
+          "dist/**",
+          "profiles/**"
+        ]
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/api/index.js"
     }
   ],
   "crons": [
@@ -13,9 +23,5 @@
       "path": "/api/cron",
       "schedule": "*/10 * * * *"
     }
-  ],
-  "env": {
-    "NODE_ENV": "production",
-    "VERCEL": "1"
-  }
+  ]
 }

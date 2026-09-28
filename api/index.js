@@ -1,12 +1,11 @@
-// Vercel Serverless Function entrypoint
-// Sets VERCEL=1 so server.js skips calling app.listen()
+import { app } from '../dist/api/server.js';
 
-process.env.VERCEL = '1';
-
-const { app } = await import('../dist/api/server.js');
-
-await app.ready();
+let isReady = false;
 
 export default async function handler(req, res) {
+  if (!isReady) {
+    await app.ready();
+    isReady = true;
+  }
   app.server.emit('request', req, res);
 }

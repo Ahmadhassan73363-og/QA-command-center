@@ -1,0 +1,34 @@
+{
+  "name": "qa-command-center",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Universal Website QA & Monitoring Command Center - Phase 1 (MVP)",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "typecheck": "tsc -p . --noEmit",
+    "migrate": "tsx src/db/migrate.ts",
+    "dev:api": "tsx watch src/api/server.ts",
+    "dev:worker": "tsx watch src/worker.ts",
+    "start:api": "node dist/api/server.js",
+    "start:worker": "node dist/worker.js",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "bullmq": "^5.81.5",
+    "fastify": "^5.12.5",
+    "ioredis": "^5.11.1",
+    "pg": "^8.23.0",
+    "yaml": "^2.9.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "@types/pg": "^8.23.1",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  }
+}

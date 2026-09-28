@@ -1,0 +1,29 @@
+id: generic
+name: Generic Website
+description: Uptime, TLS, redirects, security headers and basic SEO for any website.
+config:
+  checks:
+    availability.dns: true
+    availability.http_status: true
+    availability.redirect_chain: true
+    performance.response_time: true
+    ssl.cert_expiry: true
+    technical.security_headers: true
+    seo.robots_txt: true
+    seo.sitemap_xml: true
+    content.noindex: true
+  expected:
+    http_status: 200
+    probe_path: ""
+    redirect_chain_max_hops: 3
+    sitemap_path: /sitemap.xml
+    robots_allow_all: true
+    noindex: false
+    security_headers:
+      - strict-transport-security
+      - x-content-type-options
+  thresholds:
+    response_ms_warn: 800
+    response_ms_crit: 2000
+    ssl_days_warn: 14
+    ssl_days_crit: 7

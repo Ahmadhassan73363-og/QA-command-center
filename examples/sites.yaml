@@ -1,0 +1,24 @@
+# POST this file to /api/sites/import (Content-Type: text/yaml).
+sites:
+  - name: Example Marketing
+    url: https://www.example.com
+    profile: generic
+    tags: [marketing]
+
+  - name: Example Docs
+    url: https://docs.example.com
+    profile: generic
+    expected:
+      sitemap_path: /sitemap-index.xml
+    thresholds:
+      response_ms_warn: 1200
+    disable: [seo.robots_txt]
+
+  - name: Example API
+    url: https://api.example.com
+    profile: api
+    expected:
+      health_body_contains: ok
+    thresholds:
+      response_ms_warn: 300
+    tags: [critical]

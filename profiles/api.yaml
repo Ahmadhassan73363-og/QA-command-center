@@ -1,0 +1,21 @@
+id: api
+name: REST / GraphQL API
+description: Health endpoint, latency and TLS for API hosts.
+extends: generic
+config:
+  disable:
+    - availability.http_status
+    - availability.redirect_chain
+    - technical.security_headers
+    - seo.robots_txt
+    - seo.sitemap_xml
+    - content.noindex
+  checks:
+    api.health: true
+  expected:
+    probe_path: /health
+    health_path: /health
+    health_status: 200
+  thresholds:
+    response_ms_warn: 200
+    response_ms_crit: 1000

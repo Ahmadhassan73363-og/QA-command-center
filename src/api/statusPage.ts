@@ -1022,9 +1022,18 @@ export async function renderStatusPage(): Promise<string> {
       }, 3500);
     }
 
+    // Hidden for now — noisy on many real-world sites. Checks still run and are recorded
+    // (visible in the Raw JSON tab); this only keeps them out of the health/status UI.
+    // Remove entries here to bring a check back into the dashboard.
+    const HIDDEN_CHECK_TYPES = ['technical.security_headers', 'seo.robots_txt', 'seo.sitemap_xml'];
+    function visibleChecks(checks) {
+      return (checks || []).filter(c => !HIDDEN_CHECK_TYPES.includes(c.check_type));
+    }
+
     // Health Computation
     function getStatus(checks) {
-      if (!checks || !checks.length) return 'pending';
+      checks = visibleChecks(checks);
+      if (!checks.length) return 'pending';
       if (checks.some(c => c.status === 'fail' || c.status === 'error')) return 'crit';
       if (checks.some(c => c.status === 'warn')) return 'warn';
       return 'ok';
@@ -1182,15 +1191,13 @@ export async function renderStatusPage(): Promise<string> {
           uptimeBarsHtml = '<div class="uptime-bar ok" style="opacity:0.3;" title="Initial cycle pending"></div>';
         }
 
-        // Key checks indicators
+        // Key checks indicators. Security headers / robots.txt / sitemap are hidden for
+        // now (noisy on many real-world sites) — see HIDDEN_CHECK_TYPES.
         const tags = [
           { key: 'availability.dns', label: 'DNS' },
           { key: 'ssl.cert_expiry', label: 'SSL' },
           { key: 'availability.http_status', label: 'HTTP' },
           { key: 'performance.response_time', label: 'TTFB' },
-          { key: 'technical.security_headers', label: 'Headers' },
-          { key: 'seo.robots_txt', label: 'Robots' },
-          { key: 'seo.sitemap_xml', label: 'Sitemap' },
         ].map(item => {
           const c = checks.find(x => x.check_type === item.key);
           const cSt = c ? c.status : 'none';
@@ -1198,7 +1205,7 @@ export async function renderStatusPage(): Promise<string> {
         }).join('');
 
         // Failing / warning checks surfaced right on the card, with the recorded reason for each.
-        const problems = checks.filter(c => c.status === 'warn' || c.status === 'fail' || c.status === 'error');
+        const problems = visibleChecks(checks).filter(c => c.status === 'warn' || c.status === 'fail' || c.status === 'error');
         const issuesHtml = problems.length
           ? '<div class="card-issues' + (problems.some(c => c.status === 'fail' || c.status === 'error') ? ' crit' : '') + '">'
             + problems.map(c => '<div class="card-issue-row"><strong>' + esc(c.check_type) + ':</strong> ' + esc(c.error_message || 'Check did not pass') + '</div>').join('')
@@ -1461,15 +1468,16 @@ export async function renderStatusPage(): Promise<string> {
         const redirects = find('availability.redirect_chain');
         const latency = find('performance.response_time');
         const ssl = find('ssl.cert_expiry');
-        const headers = find('technical.security_headers');
-        const robots = find('seo.robots_txt');
-        const sitemap = find('seo.sitemap_xml');
+        // technical.security_headers / seo.robots_txt / seo.sitemap_xml hidden for now — see
+        // HIDDEN_CHECK_TYPES. Still recorded and visible in the Raw JSON tab.
         const noindex = find('content.noindex');
 
         const netStatus = groupStatus(dns, http, redirects);
         const perfStatus = groupStatus(latency);
-        const secStatus = groupStatus(ssl, headers);
-        const seoStatus = groupStatus(robots, sitemap, noindex);
+        // Security headers / robots.txt / sitemap hidden for now — excluded from these boxes'
+        // status too, so a hidden check can't silently color a box the user can't explain.
+        const secStatus = groupStatus(ssl);
+        const seoStatus = groupStatus(noindex);
 
         body.innerHTML =
           // Live Snapshot
@@ -1517,25 +1525,22 @@ export async function renderStatusPage(): Promise<string> {
             + diagReasonBanner(latency)
           + '</div>'
 
-          // Security Box
+          // Security Box (Security Headers hidden for now — see HIDDEN_CHECK_TYPES)
           + '<div class="diag-item-box' + diagBoxClass(secStatus) + '">'
-            + '<div class="diag-title"><span>SSL Certificate & Security Headers</span><span class="status-badge ' + badgeClass(secStatus) + '">' + badgeLabel(secStatus) + '</span></div>'
+            + '<div class="diag-title"><span>SSL Certificate</span><span class="status-badge ' + badgeClass(secStatus) + '">' + badgeLabel(secStatus) + '</span></div>'
             + '<table class="diag-table">'
               + '<tr><td class="col-name">SSL Expiry</td><td class="col-val">' + (ssl?.actual_value?.days_left != null ? ssl.actual_value.days_left + ' days remaining · ' + esc(ssl.actual_value.issuer || 'Valid CA') : 'Valid') + '</td></tr>'
-              + '<tr><td class="col-name">Security Headers</td><td class="col-val">' + (headers?.error_message ? '<span style="color:var(--warn);">' + esc(headers.error_message) + '</span>' : '<span style="color:var(--ok);">All expected security headers present</span>') + '</td></tr>'
             + '</table>'
-            + diagReasonBanner(ssl) + diagReasonBanner(headers)
+            + diagReasonBanner(ssl)
           + '</div>'
 
-          // SEO Box
+          // SEO Box (Robots.txt / Sitemap hidden for now — see HIDDEN_CHECK_TYPES)
           + '<div class="diag-item-box' + diagBoxClass(seoStatus) + '">'
-            + '<div class="diag-title"><span>Search Engine Indexing & Crawl</span><span class="status-badge ' + badgeClass(seoStatus) + '">' + badgeLabel(seoStatus) + '</span></div>'
+            + '<div class="diag-title"><span>Search Engine Indexing</span><span class="status-badge ' + badgeClass(seoStatus) + '">' + badgeLabel(seoStatus) + '</span></div>'
             + '<table class="diag-table">'
-              + '<tr><td class="col-name">Robots.txt</td><td class="col-val">' + (robots?.status === 'pass' ? 'Accessible, crawlers allowed' : 'Status ' + (robots?.response_code || 404)) + '</td></tr>'
-              + '<tr><td class="col-name">Sitemap XML</td><td class="col-val">' + (sitemap?.status === 'pass' ? 'Valid urlset structure' : 'Returned ' + (sitemap?.response_code || 'error')) + '</td></tr>'
               + '<tr><td class="col-name">Noindex Directive</td><td class="col-val">' + (noindex?.status === 'pass' ? 'Indexing allowed' : 'Noindex directive active') + '</td></tr>'
             + '</table>'
-            + diagReasonBanner(robots) + diagReasonBanner(sitemap) + diagReasonBanner(noindex)
+            + diagReasonBanner(noindex)
           + '</div>';
       }
       else if (state.activeDrawerTab === 'history') {
@@ -1610,10 +1615,10 @@ export async function renderStatusPage(): Promise<string> {
       fetchDashboard(false);
     }, 5000);
 
-    // Auto-refresh: re-run every active site's checks once a minute, as long as this
+    // Auto-refresh: re-run every active site's checks every 15 minutes, as long as this
     // dashboard stays open. (Vercel's own cron is capped at once/day on the Hobby plan,
     // so this is what actually keeps results current between visits.)
-    const AUTO_CHECK_INTERVAL_MS = 60_000;
+    const AUTO_CHECK_INTERVAL_MS = 15 * 60_000;
     let autoCheckRunning = false;
     let nextAutoCheckAt = Date.now() + AUTO_CHECK_INTERVAL_MS;
 
@@ -1640,7 +1645,9 @@ export async function renderStatusPage(): Promise<string> {
       const countdown = document.getElementById('refreshCountdown');
       if (!countdown || autoCheckRunning) return;
       const secsLeft = Math.max(0, Math.round((nextAutoCheckAt - Date.now()) / 1000));
-      countdown.textContent = 'Next auto-check in ' + secsLeft + 's';
+      const mm = Math.floor(secsLeft / 60);
+      const ss = String(secsLeft % 60).padStart(2, '0');
+      countdown.textContent = 'Next auto-check in ' + mm + ':' + ss;
     }, 1000);
   </script>
 </body>

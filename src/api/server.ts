@@ -90,6 +90,11 @@ app.all('/api/cron', async (_req, reply) => {
 });
 
 // ---- Dashboard Aggregated Stats ----------------------------------------------
+// Hidden for now (noisy on many real-world sites) — kept out of the uptime-bar rollup below
+// so it can't color a run yellow/red for a check the UI doesn't show. Mirrors the client-side
+// HIDDEN_CHECK_TYPES list in statusPage.ts; the raw per-check data is unaffected.
+const HIDDEN_CHECK_TYPES = ['technical.security_headers', 'seo.robots_txt', 'seo.sitemap_xml'];
+
 app.get('/api/dashboard/stats', async () => {
   const sites = (
     await pool.query(`
@@ -123,7 +128,7 @@ app.get('/api/dashboard/stats', async () => {
                 AVG(c.response_time_ms)::int AS latency_ms
               FROM runs r
               JOIN check_results c ON c.run_id = r.id
-              WHERE c.site_id = s.id
+              WHERE c.site_id = s.id AND c.check_type <> ALL($1)
               GROUP BY r.id, r.started_at
               ORDER BY r.started_at DESC
               LIMIT 15
@@ -142,7 +147,7 @@ app.get('/api/dashboard/stats', async () => {
       ) r ON true
       GROUP BY s.id
       ORDER BY s.is_active DESC, s.name ASC
-    `)
+    `, [HIDDEN_CHECK_TYPES])
   ).rows;
 
   const incidents = (
@@ -173,6 +178,7 @@ app.get('/api/dashboard/stats', async () => {
 
   for (const s of sites) {
     for (const c of s.checks) {
+      if (HIDDEN_CHECK_TYPES.includes(c.check_type)) continue;
       totalChecks++;
       if (c.status === 'pass' || c.status === 'flaky') passedChecks++;
       else if (c.status === 'warn') warnChecks++;
@@ -220,11 +226,11 @@ app.get('/api/sites/:id/history', async (req) => {
         AVG(c.response_time_ms)::int AS avg_ms
      FROM runs r
      JOIN check_results c ON c.run_id = r.id
-     WHERE c.site_id = $1
+     WHERE c.site_id = $1 AND c.check_type <> ALL($2)
      GROUP BY r.id, r.trigger, r.started_at, r.finished_at
      ORDER BY r.started_at DESC
      LIMIT 50`,
-    [id],
+    [id, HIDDEN_CHECK_TYPES],
   );
   return rows;
 });
@@ -292,10 +298,11 @@ app.post('/api/audit', async (req, reply) => {
     [site.id],
   );
 
-  const passed = checks.filter((c) => c.status === 'pass' || c.status === 'flaky').length;
-  const warned = checks.filter((c) => c.status === 'warn').length;
-  const failed = checks.filter((c) => c.status === 'fail' || c.status === 'error').length;
-  const total = checks.length;
+  const visible = checks.filter((c) => !HIDDEN_CHECK_TYPES.includes(c.check_type));
+  const passed = visible.filter((c) => c.status === 'pass' || c.status === 'flaky').length;
+  const warned = visible.filter((c) => c.status === 'warn').length;
+  const failed = visible.filter((c) => c.status === 'fail' || c.status === 'error').length;
+  const total = visible.length;
   const score = total ? Math.round(((passed * 100) + (warned * 50)) / total) : 100;
   const avgResponseMs = checks.find((c) => c.check_type === 'performance.response_time')?.response_time_ms ?? null;
   const status = failed > 0 ? 'crit' : warned > 0 ? 'warn' : 'ok';

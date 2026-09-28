@@ -16,6 +16,11 @@ registerCheck({
     return {
       status,
       errorCode: status === 'pass' ? undefined : 'assertion_fail',
+      errorMessage: status === 'fail'
+        ? `Critical latency: ${ms} ms exceeds critical threshold of ${crit} ms`
+        : status === 'warn'
+        ? `High latency: ${ms} ms exceeds warning threshold of ${warn} ms`
+        : undefined,
       responseCode: r.status,
       responseTimeMs: ms,
       expected: { warn_ms: warn, crit_ms: crit },

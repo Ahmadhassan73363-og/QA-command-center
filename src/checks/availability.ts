@@ -17,6 +17,7 @@ registerCheck({
     return {
       status: ok ? 'pass' : 'fail',
       errorCode: ok ? undefined : 'dns_fail',
+      errorMessage: ok ? undefined : `DNS resolution failed: unable to resolve host "${host}" to an IP address`,
       responseTimeMs: Math.round(performance.now() - start),
       expected: { resolves: true },
       actual: { addresses: addrs.map((a) => a.address) },
@@ -49,7 +50,13 @@ registerCheck({
       };
     }
     const ok = r.status === expected;
-    return { ...base, status: ok ? 'pass' : 'fail', errorCode: ok ? undefined : 'http_status' };
+    const statusNote = r.status === 404 ? ' (Not Found)' : r.status === 500 ? ' (Internal Server Error)' : r.status === 502 ? ' (Bad Gateway)' : r.status === 503 ? ' (Service Unavailable)' : r.status === 403 ? ' (Forbidden)' : '';
+    return {
+      ...base,
+      status: ok ? 'pass' : 'fail',
+      errorCode: ok ? undefined : 'http_status',
+      errorMessage: ok ? undefined : `Expected HTTP ${expected} but received HTTP ${r.status}${statusNote}`,
+    };
   },
 });
 

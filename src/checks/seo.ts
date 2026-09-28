@@ -50,7 +50,14 @@ registerCheck({
   async execute(ctx) {
     const r = await ctx.http.get('/robots.txt');
     if (r.status !== 200) {
-      return { status: 'warn', errorCode: 'http_status', responseCode: r.status, expected: { http_status: 200 }, actual: { http_status: r.status } };
+      return {
+        status: 'warn',
+        errorCode: 'http_status',
+        errorMessage: `/robots.txt returned HTTP ${r.status}${r.status === 404 ? ' (Not Found)' : ''}`,
+        responseCode: r.status,
+        expected: { http_status: 200 },
+        actual: { http_status: r.status },
+      };
     }
     const allowAll = ctx.config.expected.robots_allow_all !== false;
     const blocked = robotsBlocksAll(r.body ?? '');
@@ -61,7 +68,7 @@ registerCheck({
       responseCode: r.status,
       expected: { blocks_all_crawlers: !allowAll },
       actual: { blocks_all_crawlers: blocked },
-      errorMessage: bad ? 'robots.txt disallows all crawlers from /' : undefined,
+      errorMessage: bad ? 'robots.txt disallows all search engine crawlers from /' : undefined,
     };
   },
 });
@@ -77,9 +84,13 @@ registerCheck({
     const r = await ctx.http.get(path);
     const isXml = /<(urlset|sitemapindex)[\s>]/i.test(r.body ?? '');
     const ok = r.status === 200 && isXml;
+    const errMsg = ok ? undefined : r.status !== 200
+      ? `Sitemap at "${path}" returned HTTP ${r.status}${r.status === 404 ? ' (Not Found)' : ''}`
+      : `Response at "${path}" is not valid XML (<urlset> or <sitemapindex> tag missing)`;
     return {
       status: ok ? 'pass' : 'warn',
       errorCode: ok ? undefined : r.status === 200 ? 'assertion_fail' : 'http_status',
+      errorMessage: errMsg,
       responseCode: r.status,
       expected: { path, http_status: 200, sitemap_xml: true },
       actual: { http_status: r.status, sitemap_xml: isXml },

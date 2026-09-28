@@ -491,6 +491,149 @@ export async function renderStatusPage(): Promise<string> {
       gap: 5px;
     }
 
+    /* Visual Snapshot */
+    .snapshot-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin-bottom: 14px;
+    }
+    .snapshot-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      background: #141418;
+      border-bottom: 1px solid var(--border-subtle);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--fg-muted);
+      letter-spacing: 0.03em;
+    }
+    .snapshot-viewport {
+      width: 100%;
+      height: 200px;
+      background: #09090b;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      position: relative;
+    }
+    .snapshot-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: top;
+      transition: transform 0.25s ease;
+    }
+    .snapshot-img:hover {
+      transform: scale(1.02);
+    }
+    .card-thumb {
+      width: 80px;
+      height: 52px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      overflow: hidden;
+      background: #09090b;
+      flex-shrink: 0;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .card-thumb:hover {
+      border-color: var(--fg-muted);
+    }
+    .card-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: top;
+    }
+    .card-issues {
+      margin-top: 10px;
+      padding: 8px 10px;
+      border-radius: var(--radius-sm);
+      background: rgba(234, 179, 8, 0.08);
+      border: 1px solid rgba(234, 179, 8, 0.25);
+      font-size: 11px;
+    }
+    .card-issues.crit {
+      background: rgba(239, 68, 68, 0.08);
+      border-color: rgba(239, 68, 68, 0.25);
+    }
+    .card-issue-row {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      color: var(--fg-secondary);
+      line-height: 1.4;
+    }
+    .card-issue-row + .card-issue-row {
+      margin-top: 5px;
+    }
+    .diag-item-box {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      margin-bottom: 12px;
+    }
+    .diag-item-box.warn {
+      border-color: rgba(234, 179, 8, 0.35);
+      background: rgba(234, 179, 8, 0.02);
+    }
+    .diag-item-box.crit {
+      border-color: rgba(239, 68, 68, 0.35);
+      background: rgba(239, 68, 68, 0.02);
+    }
+    .diag-reason-banner {
+      margin-top: 8px;
+      padding: 8px 10px;
+      border-radius: var(--radius-sm);
+      font-size: 11px;
+      font-family: 'JetBrains Mono', monospace;
+      line-height: 1.4;
+    }
+    .diag-reason-banner.warn {
+      background: rgba(234, 179, 8, 0.12);
+      color: #fde047;
+      border-left: 3px solid var(--warn);
+    }
+    .diag-reason-banner.crit {
+      background: rgba(239, 68, 68, 0.12);
+      color: #fca5a5;
+      border-left: 3px solid var(--crit);
+    }
+    .diag-reason-banner.pass {
+      background: rgba(34, 197, 94, 0.08);
+      color: #86efac;
+      border-left: 3px solid var(--ok);
+    }
+    .diag-remedy {
+      margin-top: 6px;
+      font-size: 11px;
+      color: var(--fg-muted);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .snapshot-frame, .card-thumb iframe {
+      width: 100%;
+      height: 100%;
+      border: 0;
+      background: #09090b;
+      pointer-events: none;
+    }
+    .snapshot-note {
+      padding: 6px 12px;
+      font-size: 10px;
+      color: var(--fg-subtle);
+      text-align: center;
+      border-top: 1px solid var(--border-subtle);
+    }
+
     /* Modal / Slide-out Drawer */
     .drawer-overlay {
       position: fixed;
@@ -860,6 +1003,58 @@ export async function renderStatusPage(): Promise<string> {
       return 'ok';
     }
 
+    // Maps a check's raw status ('pass'/'warn'/'fail'/'error') to the status-badge
+    // CSS modifier ('ok'/'warn'/'crit'/'pending') — the two vocabularies differ.
+    function badgeClass(status) {
+      if (status === 'pass') return 'ok';
+      if (status === 'warn') return 'warn';
+      if (status === 'fail' || status === 'error') return 'crit';
+      return 'pending';
+    }
+    function badgeLabel(status) {
+      if (status === 'pass') return 'Pass';
+      if (status === 'warn') return 'Warning';
+      if (status === 'fail' || status === 'error') return 'Fail';
+      return 'Pending';
+    }
+    // Worst status across a group of checks that make up one diagnostics box.
+    function groupStatus() {
+      const arr = Array.prototype.slice.call(arguments).filter(Boolean);
+      if (!arr.length) return undefined;
+      if (arr.some(c => c.status === 'fail' || c.status === 'error')) return 'fail';
+      if (arr.some(c => c.status === 'warn')) return 'warn';
+      return 'pass';
+    }
+
+    // Short, actionable next step per fixed error class (Revised Spec v2 error codes).
+    const REMEDY_HINTS = {
+      dns_fail: "Verify the domain's DNS records point to an active host.",
+      tcp_refused: 'Check that the server is running and the port is open to the internet.',
+      tcp_timeout: 'Check firewall rules and server load — the host is not responding in time.',
+      tls_fail: 'Renew or reinstall the TLS certificate for this domain.',
+      http_status: 'Confirm the endpoint is reachable and returns the expected status code.',
+      timeout: 'Investigate slow backend responses or increase the check timeout threshold.',
+      assertion_fail: 'Review the expected vs. actual values recorded for this check.',
+      blocked_by_bot_protection: "Allowlist the monitor's user-agent or X-Monitor-Token header at the edge/WAF.",
+      selector_not_found: 'Confirm the page markup still contains the expected element.',
+      worker_error: 'Check monitor worker logs — this is an internal error, not a site issue.',
+    };
+
+    // Renders "which check failed and why" as a colored banner plus a remedy hint, for one check.
+    function diagReasonBanner(check) {
+      if (!check || check.status === 'pass') return '';
+      const cls = (check.status === 'fail' || check.status === 'error') ? 'crit' : 'warn';
+      const msg = check.error_message || (check.check_type + ' did not pass, no further detail recorded');
+      const remedy = REMEDY_HINTS[check.error_code];
+      return '<div class="diag-reason-banner ' + cls + '">' + esc(msg) + '</div>'
+        + (remedy ? '<div class="diag-remedy">💡 ' + esc(remedy) + '</div>' : '');
+    }
+    function diagBoxClass(status) {
+      if (status === 'fail' || status === 'error') return ' crit';
+      if (status === 'warn') return ' warn';
+      return '';
+    }
+
     // Fetch Full Dashboard
     async function fetchDashboard(showToastFeedback = false) {
       try {
@@ -972,6 +1167,14 @@ export async function renderStatusPage(): Promise<string> {
           return '<span class="check-tag ' + cSt + '">' + item.label + '</span>';
         }).join('');
 
+        // Failing / warning checks surfaced right on the card, with the recorded reason for each.
+        const problems = checks.filter(c => c.status === 'warn' || c.status === 'fail' || c.status === 'error');
+        const issuesHtml = problems.length
+          ? '<div class="card-issues' + (problems.some(c => c.status === 'fail' || c.status === 'error') ? ' crit' : '') + '">'
+            + problems.map(c => '<div class="card-issue-row"><strong>' + esc(c.check_type) + ':</strong> ' + esc(c.error_message || 'Check did not pass') + '</div>').join('')
+            + '</div>'
+          : '';
+
         return '<div class="site-card">'
           + '<div class="site-card-top">'
             + '<div style="overflow:hidden;">'
@@ -984,7 +1187,12 @@ export async function renderStatusPage(): Promise<string> {
                 + '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></svg>'
               + '</a>'
             + '</div>'
-            + '<span class="status-badge ' + st + '">' + (st === 'ok' ? 'Healthy' : st === 'warn' ? 'Warning' : st === 'crit' ? 'Critical' : 'Pending') + '</span>'
+            + '<div style="display:flex; align-items:flex-start; gap:8px; flex-shrink:0;">'
+              + '<div class="card-thumb" title="Live preview (may be blank if the site blocks embedding)" onclick="openDrawer(' + site.id + ')">'
+                + '<iframe src="' + esc(site.url) + '" loading="lazy" sandbox="allow-scripts allow-same-origin" referrerpolicy="no-referrer" tabindex="-1" aria-hidden="true"></iframe>'
+              + '</div>'
+              + '<span class="status-badge ' + st + '">' + (st === 'ok' ? 'Healthy' : st === 'warn' ? 'Warning' : st === 'crit' ? 'Critical' : 'Pending') + '</span>'
+            + '</div>'
           + '</div>'
 
           + '<div>'
@@ -993,6 +1201,8 @@ export async function renderStatusPage(): Promise<string> {
           + '</div>'
 
           + '<div class="checks-flow">' + tags + '</div>'
+
+          + issuesHtml
 
           + '<div class="site-card-foot">'
             + '<div class="foot-meta">'
@@ -1204,44 +1414,67 @@ export async function renderStatusPage(): Promise<string> {
         const sitemap = find('seo.sitemap_xml');
         const noindex = find('content.noindex');
 
-        body.innerHTML = 
+        const netStatus = groupStatus(dns, http, redirects);
+        const perfStatus = groupStatus(latency);
+        const secStatus = groupStatus(ssl, headers);
+        const seoStatus = groupStatus(robots, sitemap, noindex);
+
+        body.innerHTML =
+          // Live Snapshot
+          '<div class="snapshot-card">'
+            + '<div class="snapshot-top">'
+              + '<span>LIVE PREVIEW</span>'
+              + '<a href="' + esc(site.url) + '" target="_blank" rel="noopener noreferrer" class="site-link" style="margin:0;">Open site '
+                + '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></svg>'
+              + '</a>'
+            + '</div>'
+            + '<div class="snapshot-viewport">'
+              + '<iframe class="snapshot-frame" src="' + esc(site.url) + '" loading="lazy" sandbox="allow-scripts allow-same-origin" referrerpolicy="no-referrer"></iframe>'
+            + '</div>'
+            + '<div class="snapshot-note">Live embedded preview, not a stored image — some sites block embedding via X-Frame-Options/CSP and will render blank.</div>'
+          + '</div>'
+
           // Availability Box
-          '<div class="diag-box">'
-            + '<div class="diag-title"><span>Network & Connectivity</span><span class="status-badge ' + (http?.status || 'pending') + '">' + (http?.status || 'pending') + '</span></div>'
+          + '<div class="diag-item-box' + diagBoxClass(netStatus) + '">'
+            + '<div class="diag-title"><span>Network & Connectivity</span><span class="status-badge ' + badgeClass(netStatus) + '">' + badgeLabel(netStatus) + '</span></div>'
             + '<table class="diag-table">'
               + '<tr><td class="col-name">DNS Resolution</td><td class="col-val">' + (dns?.response_time_ms != null ? dns.response_time_ms + ' ms' : 'Resolves') + (dns?.actual_value?.addresses ? ' · ' + esc(JSON.stringify(dns.actual_value.addresses)) : '') + '</td></tr>'
               + '<tr><td class="col-name">HTTP Status</td><td class="col-val">' + (http?.response_code || 200) + ' (Method: ' + (http?.metadata?.method || 'HEAD') + ')</td></tr>'
               + '<tr><td class="col-name">Redirect Chain</td><td class="col-val">' + (redirects?.actual_value?.hops ?? 0) + ' hops · HTTPS verified</td></tr>'
             + '</table>'
+            + diagReasonBanner(dns) + diagReasonBanner(http) + diagReasonBanner(redirects)
           + '</div>'
 
           // Performance Box
-          + '<div class="diag-box">'
-            + '<div class="diag-title"><span>Performance & Latency</span><span class="status-badge ' + (latency?.status || 'pending') + '">' + (latency?.status || 'pending') + '</span></div>'
+          + '<div class="diag-item-box' + diagBoxClass(perfStatus) + '">'
+            + '<div class="diag-title"><span>Performance & Latency</span><span class="status-badge ' + badgeClass(perfStatus) + '">' + badgeLabel(perfStatus) + '</span></div>'
             + '<table class="diag-table">'
               + '<tr><td class="col-name">Time to First Byte</td><td class="col-val" style="font-weight:600; color:#fff;">' + (latency?.response_time_ms != null ? latency.response_time_ms + ' ms' : 'N/A') + ' <span style="color:var(--fg-muted); font-size:10px;">(Warn: 800ms / Crit: 2000ms)</span></td></tr>'
             + '</table>'
+            + diagReasonBanner(latency)
           + '</div>'
 
           // Security Box
-          + '<div class="diag-box">'
-            + '<div class="diag-title"><span>SSL Certificate & Security Headers</span><span class="status-badge ' + (ssl?.status || 'pending') + '">' + (ssl?.status || 'pending') + '</span></div>'
+          + '<div class="diag-item-box' + diagBoxClass(secStatus) + '">'
+            + '<div class="diag-title"><span>SSL Certificate & Security Headers</span><span class="status-badge ' + badgeClass(secStatus) + '">' + badgeLabel(secStatus) + '</span></div>'
             + '<table class="diag-table">'
               + '<tr><td class="col-name">SSL Expiry</td><td class="col-val">' + (ssl?.actual_value?.days_left != null ? ssl.actual_value.days_left + ' days remaining · ' + esc(ssl.actual_value.issuer || 'Valid CA') : 'Valid') + '</td></tr>'
               + '<tr><td class="col-name">Security Headers</td><td class="col-val">' + (headers?.error_message ? '<span style="color:var(--warn);">' + esc(headers.error_message) + '</span>' : '<span style="color:var(--ok);">All expected security headers present</span>') + '</td></tr>'
             + '</table>'
+            + diagReasonBanner(ssl) + diagReasonBanner(headers)
           + '</div>'
 
           // SEO Box
-          + '<div class="diag-box">'
-            + '<div class="diag-title"><span>Search Engine Indexing & Crawl</span><span class="status-badge ' + (robots?.status || 'pending') + '">' + (robots?.status || 'pending') + '</span></div>'
+          + '<div class="diag-item-box' + diagBoxClass(seoStatus) + '">'
+            + '<div class="diag-title"><span>Search Engine Indexing & Crawl</span><span class="status-badge ' + badgeClass(seoStatus) + '">' + badgeLabel(seoStatus) + '</span></div>'
             + '<table class="diag-table">'
               + '<tr><td class="col-name">Robots.txt</td><td class="col-val">' + (robots?.status === 'pass' ? 'Accessible, crawlers allowed' : 'Status ' + (robots?.response_code || 404)) + '</td></tr>'
               + '<tr><td class="col-name">Sitemap XML</td><td class="col-val">' + (sitemap?.status === 'pass' ? 'Valid urlset structure' : 'Returned ' + (sitemap?.response_code || 'error')) + '</td></tr>'
               + '<tr><td class="col-name">Noindex Directive</td><td class="col-val">' + (noindex?.status === 'pass' ? 'Indexing allowed' : 'Noindex directive active') + '</td></tr>'
             + '</table>'
+            + diagReasonBanner(robots) + diagReasonBanner(sitemap) + diagReasonBanner(noindex)
           + '</div>';
-      } 
+      }
       else if (state.activeDrawerTab === 'history') {
         body.innerHTML = '<div style="font-size:12px; color:var(--fg-muted);"><span class="spin">⚡</span> Loading historical check runs from database...</div>';
 

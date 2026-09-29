@@ -99,9 +99,11 @@ export async function createSite(raw: unknown): Promise<SiteRow> {
     );
     const site = rows[0]!;
     await syncSiteSchedule(site);
-    // Fire-and-forget: confirms the alert pipeline is wired up without slowing down site creation.
-    // notify() never throws — failures are logged inside it.
-    void notify(site, eventFor(site, {
+    // Awaited (not fire-and-forget): on Vercel serverless, the function can freeze right after
+    // the response is sent, killing any not-yet-finished background work — a dangling promise
+    // here would make this email undeliverable in practice. notify() never throws internally
+    // (failures are caught and logged), so this can't fail site creation itself.
+    await notify(site, eventFor(site, {
       event: 'site.added',
       severity: 'warn',
       checkType: 'site.added',

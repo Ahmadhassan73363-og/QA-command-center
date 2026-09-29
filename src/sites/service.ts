@@ -9,6 +9,7 @@ import {
   type Layer, type ProfileRow, type ResolvedConfig,
 } from '../profiles/resolve.js';
 import { removeSiteSchedule, syncSiteSchedule } from '../engine/schedule.js';
+import { eventFor, notify } from '../alerts/notify.js';
 
 export class NotFoundError extends Error { readonly statusCode = 404; }
 export class ConflictError extends Error { readonly statusCode = 409; }
@@ -98,6 +99,14 @@ export async function createSite(raw: unknown): Promise<SiteRow> {
     );
     const site = rows[0]!;
     await syncSiteSchedule(site);
+    // Fire-and-forget: confirms the alert pipeline is wired up without slowing down site creation.
+    // notify() never throws — failures are logged inside it.
+    void notify(site, eventFor(site, {
+      event: 'site.added',
+      severity: 'warn',
+      checkType: 'site.added',
+      summary: `${site.name} (${site.url}) was added to monitoring.`,
+    }));
     return site;
   } catch (err) {
     if ((err as { code?: string }).code === '23505') {

@@ -1009,6 +1009,18 @@ export async function renderStatusPage(): Promise<string> {
       return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
     }
 
+    // Compact "how long ago" for timestamps (per-site card sync time, uptime bar tooltips).
+    function timeAgo(iso) {
+      const secs = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+      if (secs < 5) return 'just now';
+      if (secs < 60) return secs + 's ago';
+      const mins = Math.round(secs / 60);
+      if (mins < 60) return mins + 'm ago';
+      const hours = Math.round(mins / 60);
+      if (hours < 24) return hours + 'h ago';
+      return Math.round(hours / 24) + 'd ago';
+    }
+
     function showToast(msg, type = 'info') {
       const tray = document.getElementById('toastTray');
       const el = document.createElement('div');
@@ -1193,6 +1205,12 @@ export async function renderStatusPage(): Promise<string> {
           uptimeBarsHtml = '<div class="uptime-bar ok" style="opacity:0.3;" title="Initial cycle pending"></div>';
         }
 
+        // Last synced: the most recent run's start time, falling back to the newest
+        // individual check timestamp if no run history is available yet.
+        const lastSyncedAt = recentRuns[0]?.started_at
+          || checks.reduce((max, c) => (!max || c.checked_at > max ? c.checked_at : max), null);
+        const syncedLabel = lastSyncedAt ? 'Synced ' + timeAgo(lastSyncedAt) : 'No runs yet';
+
         // Key checks indicators. Security headers / robots.txt / sitemap are hidden for
         // now (noisy on many real-world sites) — see HIDDEN_CHECK_TYPES.
         const tags = [
@@ -1238,7 +1256,7 @@ export async function renderStatusPage(): Promise<string> {
 
           + '<div>'
             + '<div class="uptime-timeline">' + uptimeBarsHtml + '</div>'
-            + '<div class="uptime-caption"><span>Recent audit runs</span><span>' + (latency != null ? latency + ' ms' : '--') + '</span></div>'
+            + '<div class="uptime-caption"><span>' + esc(syncedLabel) + '</span><span>' + (latency != null ? latency + ' ms' : '--') + '</span></div>'
           + '</div>'
 
           + '<div class="checks-flow">' + tags + '</div>'

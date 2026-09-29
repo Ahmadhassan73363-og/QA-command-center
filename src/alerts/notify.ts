@@ -3,8 +3,8 @@ import { config } from '../config.js';
 import type { SiteRecord } from '../checks/types.js';
 
 export interface AlertEvent {
-  event: 'incident.opened' | 'incident.resolved';
-  incidentId: number;
+  event: 'incident.opened' | 'incident.resolved' | 'site.added';
+  incidentId?: number;
   site: { id: number; name: string; url: string; region: string; profile: string };
   checkType: string;
   severity: 'warn' | 'critical';
@@ -33,8 +33,13 @@ export function resolveSecret(value: string): string {
  */
 const SITE_DOWN_CHECKS = ['availability.dns', 'availability.http_status', 'api.health'];
 
-/** True only when a site is confirmed down — not warnings (SSL/headers/etc.), not recoveries. */
-function isSiteDownEvent(ev: AlertEvent): boolean {
+/**
+ * The only two email cases: a confirmed "site is down" incident, or a new site being added
+ * (an on-demand test so the recipient can confirm the pipeline works). Warnings (SSL/headers/
+ * etc.) and recoveries never email.
+ */
+function shouldEmail(ev: AlertEvent): boolean {
+  if (ev.event === 'site.added') return true;
   return ev.event === 'incident.opened' && ev.severity === 'critical' && SITE_DOWN_CHECKS.includes(ev.checkType);
 }
 
@@ -42,7 +47,21 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
 
+function emailSubject(ev: AlertEvent): string {
+  if (ev.event === 'site.added') return `Now monitoring ${ev.site.name}`;
+  return `${ev.site.name} is down — ${ev.checkType}`;
+}
+
 function emailHtml(ev: AlertEvent): string {
+  if (ev.event === 'site.added') {
+    return `<div style="font-family:sans-serif;max-width:480px;">
+      <h2 style="color:#22c55e;margin-bottom:4px;">✅ ${escapeHtml(ev.site.name)} added to monitoring</h2>
+      <p style="color:#3f3f46;">${escapeHtml(ev.summary)}</p>
+      <p><a href="${escapeHtml(ev.site.url)}">${escapeHtml(ev.site.url)}</a></p>
+      <p style="color:#a1a1aa;font-size:12px;">This confirms email alerts are working — you'll get an email here if this site goes down.</p>
+      <p style="color:#a1a1aa;font-size:12px;">${escapeHtml(ev.at)} · region ${escapeHtml(ev.site.region)}</p>
+    </div>`;
+  }
   return `<div style="font-family:sans-serif;max-width:480px;">
     <h2 style="color:#ef4444;margin-bottom:4px;">🔴 ${escapeHtml(ev.site.name)} is down</h2>
     <p style="color:#3f3f46;"><strong>${escapeHtml(ev.checkType)}</strong>: ${escapeHtml(ev.summary)}</p>
@@ -73,7 +92,7 @@ async function sendEmail(ev: AlertEvent, ch: Channel): Promise<void> {
       body: JSON.stringify({
         from: ch.from ?? config.alertEmailFrom,
         to,
-        subject: `${ev.site.name} is down — ${ev.checkType}`,
+        subject: emailSubject(ev),
         html: emailHtml(ev),
       }),
       signal: AbortSignal.timeout(8_000),
@@ -95,8 +114,8 @@ async function channelsFor(policyId: number | null): Promise<Channel[]> {
 }
 
 export function slackMessage(ev: AlertEvent): { text: string } {
-  const icon = ev.event === 'incident.resolved' ? ':large_green_circle:' : ev.severity === 'critical' ? ':red_circle:' : ':large_yellow_circle:';
-  const verb = ev.event === 'incident.resolved' ? 'Recovered' : ev.severity === 'critical' ? 'Critical' : 'Warning';
+  const icon = ev.event === 'site.added' ? ':heavy_plus_sign:' : ev.event === 'incident.resolved' ? ':large_green_circle:' : ev.severity === 'critical' ? ':red_circle:' : ':large_yellow_circle:';
+  const verb = ev.event === 'site.added' ? 'Added' : ev.event === 'incident.resolved' ? 'Recovered' : ev.severity === 'critical' ? 'Critical' : 'Warning';
   const lines = [
     `${icon} *${verb}: ${ev.site.name}* (${ev.site.profile} · ${ev.site.region}) — \`${ev.checkType}\``,
     ev.summary,
@@ -120,7 +139,7 @@ export function eventFor(
 export async function notify(site: SiteRecord, ev: AlertEvent): Promise<void> {
   for (const ch of await channelsFor(site.alert_policy_id)) {
     if (ch.type === 'email') {
-      if (isSiteDownEvent(ev)) await sendEmail(ev, ch);
+      if (shouldEmail(ev)) await sendEmail(ev, ch);
       continue;
     }
     const url = ch.url ? resolveSecret(ch.url) : '';

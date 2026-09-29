@@ -391,7 +391,7 @@ app.get('/api/sites/:id/checks', async (req) => {
 // ---- Site Screenshot (real headless-browser capture, not an embedded iframe) -----
 // Navigating directly bypasses X-Frame-Options/CSP entirely; a small in-memory cache
 // keeps repeated dashboard polls from re-launching Chromium every few seconds.
-const SCREENSHOT_TTL_MS = 5 * 60_000;
+const SCREENSHOT_TTL_MS = 15 * 60_000;
 const screenshotCache = new Map<number, { at: number; buf: Buffer }>();
 
 app.get('/api/sites/:id/screenshot', async (req, reply) => {
@@ -400,14 +400,14 @@ app.get('/api/sites/:id/screenshot', async (req, reply) => {
 
   const cached = screenshotCache.get(id);
   if (!refresh && cached && Date.now() - cached.at < SCREENSHOT_TTL_MS) {
-    return reply.type('image/png').header('cache-control', 'public, max-age=300').send(cached.buf);
+    return reply.type('image/png').header('cache-control', `public, max-age=${SCREENSHOT_TTL_MS / 1000}`).send(cached.buf);
   }
 
   const site = await getSite(id);
   try {
     const buf = await captureScreenshot(site.url);
     screenshotCache.set(id, { at: Date.now(), buf });
-    return reply.type('image/png').header('cache-control', 'public, max-age=300').send(buf);
+    return reply.type('image/png').header('cache-control', `public, max-age=${SCREENSHOT_TTL_MS / 1000}`).send(buf);
   } catch (err) {
     app.log.error(err);
     return reply.code(502).send({ error: `screenshot capture failed: ${errorText(err)}` });
@@ -438,7 +438,23 @@ app.post('/api/incidents/:id/resolve', transition(
 
 // ---- Manual runs ---------------------------------------------------------------
 app.post('/api/runs', async (req, reply) => {
-  const { siteIds } = z.object({ siteIds: z.array(z.number().int().positive()).optional() }).parse(req.body ?? {});
+  const { siteIds, auto } = z.object({
+    siteIds: z.array(z.number().int().positive()).optional(),
+    auto: z.boolean().default(false),
+  }).parse(req.body ?? {});
+
+  // The client's periodic auto-check timer fires per open browser tab — without this, N tabs
+  // means N full audit cycles every ~15 min. A manual click (auto=false: "Run All Checks" or a
+  // single-site "Re-test") always runs; only the automatic timer is subject to this gate.
+  // The atomic UPDATE...RETURNING claims the run so two tabs firing at once can't both win.
+  if (auto) {
+    const { rowCount } = await pool.query(
+      `UPDATE auto_check_state SET last_run_at = now()
+       WHERE id = true AND (last_run_at IS NULL OR last_run_at < now() - interval '14 minutes')`,
+    );
+    if (!rowCount) return reply.code(202).send({ queued: 0, skipped: true });
+  }
+
   const ids = siteIds ?? (await pool.query<{ id: number }>('SELECT id FROM sites WHERE is_active')).rows.map((r) => r.id);
   for (const id of ids) {
     // enqueueCycle() never throws — it resolves false whenever Redis/the queue isn't available

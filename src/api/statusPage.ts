@@ -1639,15 +1639,24 @@ export async function renderStatusPage(): Promise<string> {
       fetchDashboard();
     }
 
-    // Initial Load & Non-Intrusive Background Auto-Sync (Every 5 seconds)
+    // Initial Load & Non-Intrusive Background Auto-Sync. Paused while the tab is hidden —
+    // nobody benefits from refreshing data no one is looking at — and resumed with one
+    // immediate fetch when it becomes visible again so returning to the tab isn't stale.
     fetchDashboard();
     setInterval(() => {
+      if (document.hidden) return;
       fetchDashboard(false);
-    }, 5000);
+    }, 20_000);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) fetchDashboard(false);
+    });
 
     // Auto-refresh: re-run every active site's checks every 15 minutes, as long as this
     // dashboard stays open. (Vercel's own cron is capped at once/day on the Hobby plan,
-    // so this is what actually keeps results current between visits.)
+    // so this is what actually keeps results current between visits.) Deliberately NOT
+    // paused when the tab is hidden — this is what actually runs the monitoring checks
+    // and opens incidents, so it keeps working in a backgrounded tab. Server-side dedup
+    // (auto: true, see /api/runs) caps the cost of multiple open tabs instead.
     const AUTO_CHECK_INTERVAL_MS = 15 * 60_000;
     let autoCheckRunning = false;
     let nextAutoCheckAt = Date.now() + AUTO_CHECK_INTERVAL_MS;
@@ -1658,7 +1667,7 @@ export async function renderStatusPage(): Promise<string> {
       const countdown = document.getElementById('refreshCountdown');
       if (countdown) countdown.textContent = 'Checking…';
       try {
-        await fetch('/api/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        await fetch('/api/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ auto: true }) });
         await fetchDashboard(false);
       } catch (err) {
         console.error('Auto-refresh run failed', err);

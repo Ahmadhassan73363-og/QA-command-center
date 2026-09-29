@@ -448,6 +448,9 @@ export async function renderStatusPage(): Promise<string> {
       color: var(--fg-subtle);
       font-family: 'JetBrains Mono', monospace;
     }
+    .uptime-caption .sync-label {
+      color: #fff;
+    }
 
     /* Check Badges Wrap */
     .checks-flow {
@@ -1256,7 +1259,7 @@ export async function renderStatusPage(): Promise<string> {
 
           + '<div>'
             + '<div class="uptime-timeline">' + uptimeBarsHtml + '</div>'
-            + '<div class="uptime-caption"><span>' + esc(syncedLabel) + '</span><span>' + (latency != null ? latency + ' ms' : '--') + '</span></div>'
+            + '<div class="uptime-caption"><span class="sync-label">' + esc(syncedLabel) + '</span><span>' + (latency != null ? latency + ' ms' : '--') + '</span></div>'
           + '</div>'
 
           + '<div class="checks-flow">' + tags + '</div>'

@@ -1033,8 +1033,9 @@ export async function renderStatusPage(): Promise<string> {
       const tray = document.getElementById('toastTray');
       const el = document.createElement('div');
       el.className = 'toast-msg';
-      const mark = type === 'ok' ? '✔' : type === 'warn' ? '⚠' : 'ℹ';
-      el.innerHTML = '<span style="color:var(--' + (type === 'ok' ? 'ok' : type === 'warn' ? 'warn' : 'fg') + ');">' + mark + '</span> ' + esc(msg);
+      const mark = type === 'ok' ? '✔' : type === 'warn' ? '⚠' : type === 'crit' ? '✖' : 'ℹ';
+      const color = type === 'ok' ? 'ok' : type === 'warn' ? 'warn' : type === 'crit' ? 'crit' : 'fg';
+      el.innerHTML = '<span style="color:var(--' + color + ');">' + mark + '</span> ' + esc(msg);
       tray.appendChild(el);
       setTimeout(() => {
         el.style.opacity = '0';
@@ -1351,6 +1352,16 @@ export async function renderStatusPage(): Promise<string> {
 
         const data = await res.json();
         showToast('Audit complete for ' + data.site.name, 'ok');
+
+        // Only present when a genuinely new site was just created (not a re-add of an existing
+        // URL) — reports whether the "site added" notification actually went out.
+        const en = data.site.emailNotice;
+        if (en) {
+          if (en.status === 'sent') showToast('Notification email sent', 'ok');
+          else if (en.status === 'failed') showToast('Notification email failed: ' + (en.detail || 'unknown error'), 'crit');
+          else showToast('Notification email skipped: ' + (en.detail || 'not configured'), 'warn');
+        }
+
         inUrl.value = '';
         inName.value = '';
 

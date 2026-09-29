@@ -9,7 +9,7 @@ import {
   type Layer, type ProfileRow, type ResolvedConfig,
 } from '../profiles/resolve.js';
 import { removeSiteSchedule, syncSiteSchedule } from '../engine/schedule.js';
-import { eventFor, notify } from '../alerts/notify.js';
+import { eventFor, notify, type ChannelOutcome } from '../alerts/notify.js';
 
 export class NotFoundError extends Error { readonly statusCode = 404; }
 export class ConflictError extends Error { readonly statusCode = 409; }
@@ -35,6 +35,8 @@ export interface SiteRow extends SiteRecord {
   overrides: Layer;
   created_at: string;
   updated_at: string;
+  /** Only set right after createSite() — how the "site added" notification went, per channel. */
+  emailNotice?: ChannelOutcome;
 }
 
 /** Canonical form so "https://a.com/" and "https://a.com" are the same site. */
@@ -103,12 +105,13 @@ export async function createSite(raw: unknown): Promise<SiteRow> {
     // the response is sent, killing any not-yet-finished background work — a dangling promise
     // here would make this email undeliverable in practice. notify() never throws internally
     // (failures are caught and logged), so this can't fail site creation itself.
-    await notify(site, eventFor(site, {
+    const outcomes = await notify(site, eventFor(site, {
       event: 'site.added',
       severity: 'warn',
       checkType: 'site.added',
       summary: `${site.name} (${site.url}) was added to monitoring.`,
     }));
+    site.emailNotice = outcomes.find((o) => o.type === 'email');
     return site;
   } catch (err) {
     if ((err as { code?: string }).code === '23505') {

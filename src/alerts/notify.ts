@@ -70,11 +70,19 @@ function emailHtml(ev: AlertEvent): string {
   </div>`;
 }
 
-/** Delivers one "site is down" email via the Resend API. Never throws. */
-async function sendEmail(ev: AlertEvent, ch: Channel): Promise<void> {
+export interface ChannelOutcome {
+  type: 'slack' | 'webhook' | 'email';
+  status: 'sent' | 'skipped' | 'failed';
+  /** Human-readable reason for 'skipped'/'failed' — shown directly in the UI. */
+  detail?: string;
+}
+
+/** Delivers one email via the Resend API. Never throws — always resolves to an outcome. */
+async function sendEmail(ev: AlertEvent, ch: Channel): Promise<ChannelOutcome> {
   if (!config.resendApiKey) {
-    console.warn('[alert] email channel configured but RESEND_API_KEY is not set, skipping');
-    return;
+    const detail = 'RESEND_API_KEY is not set';
+    console.warn(`[alert] email channel configured but ${detail}, skipping`);
+    return { type: 'email', status: 'skipped', detail };
   }
   const raw = ch.to;
   // Each entry (or the resolved env var) may itself be a comma-separated list, e.g. ALERT_EMAIL_TO.
@@ -83,7 +91,9 @@ async function sendEmail(ev: AlertEvent, ch: Channel): Promise<void> {
     .flatMap((v) => v.split(','))
     .map((v) => v.trim())
     .filter(Boolean);
-  if (!to.length) return; // no recipient configured yet — skip quietly, matches other channels
+  if (!to.length) {
+    return { type: 'email', status: 'skipped', detail: 'no recipient configured (ALERT_EMAIL_TO is empty)' };
+  }
 
   try {
     const res = await fetch('https://api.resend.com/emails', {
@@ -97,9 +107,17 @@ async function sendEmail(ev: AlertEvent, ch: Channel): Promise<void> {
       }),
       signal: AbortSignal.timeout(8_000),
     });
-    if (!res.ok) console.error(`[alert] email responded ${res.status}: ${await res.text()}`);
+    if (!res.ok) {
+      const text = await res.text();
+      console.error(`[alert] email responded ${res.status}: ${text}`);
+      // Resend's error body is JSON with a human-readable `message` — surface that, not the raw body.
+      const detail = (() => { try { return JSON.parse(text).message ?? `Resend responded ${res.status}`; } catch { return `Resend responded ${res.status}`; } })();
+      return { type: 'email', status: 'failed', detail };
+    }
+    return { type: 'email', status: 'sent' };
   } catch (err) {
     console.error('[alert] email delivery failed:', (err as Error).message);
+    return { type: 'email', status: 'failed', detail: (err as Error).message };
   }
 }
 
@@ -135,15 +153,22 @@ export function eventFor(
   };
 }
 
-/** Deliver to every configured channel. Failures are logged, never thrown. */
-export async function notify(site: SiteRecord, ev: AlertEvent): Promise<void> {
+/** Deliver to every configured channel. Failures are logged, never thrown — always resolves
+ *  with one outcome per configured channel, so callers can surface delivery status to the UI. */
+export async function notify(site: SiteRecord, ev: AlertEvent): Promise<ChannelOutcome[]> {
+  const outcomes: ChannelOutcome[] = [];
   for (const ch of await channelsFor(site.alert_policy_id)) {
     if (ch.type === 'email') {
-      if (shouldEmail(ev)) await sendEmail(ev, ch);
+      outcomes.push(
+        shouldEmail(ev) ? await sendEmail(ev, ch) : { type: 'email', status: 'skipped', detail: 'not a down/added event' },
+      );
       continue;
     }
     const url = ch.url ? resolveSecret(ch.url) : '';
-    if (!url) continue;
+    if (!url) {
+      outcomes.push({ type: ch.type, status: 'skipped', detail: `${ch.type} channel not configured` });
+      continue;
+    }
     const body = ch.type === 'slack' ? slackMessage(ev) : ev;
     try {
       const res = await fetch(url, {
@@ -152,9 +177,16 @@ export async function notify(site: SiteRecord, ev: AlertEvent): Promise<void> {
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(5_000),
       });
-      if (!res.ok) console.error(`[alert] ${ch.type} responded ${res.status}`);
+      if (!res.ok) {
+        console.error(`[alert] ${ch.type} responded ${res.status}`);
+        outcomes.push({ type: ch.type, status: 'failed', detail: `responded ${res.status}` });
+      } else {
+        outcomes.push({ type: ch.type, status: 'sent' });
+      }
     } catch (err) {
       console.error(`[alert] ${ch.type} delivery failed:`, (err as Error).message);
+      outcomes.push({ type: ch.type, status: 'failed', detail: (err as Error).message });
     }
   }
+  return outcomes;
 }

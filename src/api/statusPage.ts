@@ -543,10 +543,15 @@ export async function renderStatusPage(): Promise<string> {
       background: #09090b;
       flex-shrink: 0;
       cursor: pointer;
-      transition: border-color 0.15s;
+      transition: border-color 0.15s, color 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--fg-subtle);
     }
     .card-thumb:hover {
       border-color: var(--fg-muted);
+      color: var(--fg-muted);
     }
     .card-thumb img {
       width: 100%;
@@ -1248,10 +1253,12 @@ export async function renderStatusPage(): Promise<string> {
               + '</a>'
             + '</div>'
             + '<div style="display:flex; align-items:flex-start; gap:8px; flex-shrink:0;">'
-              + '<div class="card-thumb" title="Live snapshot" onclick="openDrawer(' + site.id + ')">'
-                + '<img src="/api/sites/' + site.id + '/screenshot" loading="lazy" alt="" '
-                  + 'onerror="this.style.display=\\'none\\'; this.nextElementSibling.style.display=\\'flex\\';">'
-                + '<span class="thumb-fallback">No preview</span>'
+              // No auto-loaded thumbnail here on purpose: a live snapshot means launching headless
+              // Chromium (see src/lib/screenshot.ts), which is expensive to run for every card on
+              // every dashboard view across every site. It's captured on demand instead, only for
+              // the one site you actually open — see the drawer's "Live Snapshot" section below.
+              + '<div class="card-thumb" title="View live snapshot" onclick="openDrawer(' + site.id + ')">'
+                + '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7l1.5-3h5L16 7"/><circle cx="12" cy="13.5" r="3.5"/></svg>'
               + '</div>'
               + '<span class="status-badge ' + st + '">' + (st === 'ok' ? 'Healthy' : st === 'warn' ? 'Warning' : st === 'crit' ? 'Critical' : 'Pending') + '</span>'
             + '</div>'

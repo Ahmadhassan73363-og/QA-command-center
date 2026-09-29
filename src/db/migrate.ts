@@ -1,7 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pool } from './pool.js';
-import { ensurePartitions } from './partitions.js';
+import { ensurePartitions, rotateOldData } from './partitions.js';
 import { loadBuiltinProfiles } from '../profiles/load.js';
 import { reresolveAllSites } from '../sites/service.js';
 
@@ -34,6 +34,8 @@ async function runMigrations(): Promise<void> {
 try {
   await runMigrations();
   await ensurePartitions();
+  const { droppedPartitions, deletedRuns } = await rotateOldData();
+  console.log(`[migrate] retention: dropped ${droppedPartitions.length} partition(s), removed ${deletedRuns} old run(s)`);
   const profiles = await loadBuiltinProfiles(path.join(root, 'profiles'));
   console.log(`[migrate] profiles loaded: ${profiles.join(', ')}`);
   console.log(`[migrate] re-resolved ${await reresolveAllSites()} sites`);

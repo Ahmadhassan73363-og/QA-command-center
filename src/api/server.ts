@@ -8,6 +8,7 @@ import { enqueueCycle, getQueue } from '../engine/queue.js';
 import { runCycle } from '../engine/runner.js';
 import { renderStatusPage } from './statusPage.js';
 import { captureScreenshot } from '../lib/screenshot.js';
+import { ensurePartitions, rotateOldData } from '../db/partitions.js';
 import {
   createSite, deleteSite, errorText, getSite, importSites, listSites, updateSite, type SiteRow,
 } from '../sites/service.js';
@@ -76,6 +77,23 @@ app.get('/api/health', async (_req, reply) => {
 
 // ---- Cron Endpoint for Vercel / Scheduled Jobs -------------------------------
 app.all('/api/cron', async (_req, reply) => {
+  // Vercel's daily cron hitting this endpoint is the only thing that reliably runs once a day
+  // in production (no persistent worker there) — so partition upkeep piggybacks on it. Each in
+  // its own try/catch: a retention hiccup must never block the actual site audits below.
+  try {
+    await ensurePartitions();
+  } catch (err) {
+    console.error('[cron] ensurePartitions failed:', (err as Error).message);
+  }
+  try {
+    const { droppedPartitions, deletedRuns } = await rotateOldData();
+    if (droppedPartitions.length || deletedRuns) {
+      console.log(`[cron] retention: dropped ${droppedPartitions.length} partition(s) (${droppedPartitions.join(', ')}), removed ${deletedRuns} old run(s)`);
+    }
+  } catch (err) {
+    console.error('[cron] rotateOldData failed:', (err as Error).message);
+  }
+
   const { rows: sites } = await pool.query<{ id: number }>('SELECT id FROM sites WHERE is_active = true');
   const results = [];
   for (const s of sites) {

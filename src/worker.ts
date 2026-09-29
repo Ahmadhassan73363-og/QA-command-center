@@ -1,12 +1,13 @@
 import { Worker } from 'bullmq';
 import { config } from './config.js';
 import { pool } from './db/pool.js';
-import { ensurePartitions } from './db/partitions.js';
+import { ensurePartitions, rotateOldData } from './db/partitions.js';
 import { QUEUE_NAME, redisConnection, type ConfirmJob, type CycleJob } from './engine/queue.js';
 import { runConfirm, runCycle } from './engine/runner.js';
 import { syncAllSchedules } from './engine/schedule.js';
 
 await ensurePartitions();
+await rotateOldData();
 console.log(`[worker] ${config.workerId} scheduled ${await syncAllSchedules()} sites`);
 
 const worker = new Worker(
@@ -28,6 +29,7 @@ worker.on('failed', (job, err) => console.error(`[worker] job ${job?.name} ${job
 const timers = [
   setInterval(() => syncAllSchedules().catch((e) => console.error('[worker] schedule sync', e)), 5 * 60_000),
   setInterval(() => ensurePartitions().catch((e) => console.error('[worker] partitions', e)), 24 * 3_600_000),
+  setInterval(() => rotateOldData().catch((e) => console.error('[worker] rotation', e)), 24 * 3_600_000),
 ];
 
 async function shutdown(): Promise<void> {

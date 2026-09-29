@@ -26,4 +26,7 @@ export const config = {
   // Local/dev only: path to a real Chrome/Chromium/Edge binary for screenshot capture.
   // On Vercel/AWS Lambda, @sparticuz/chromium supplies its own binary instead.
   chromePath: env('CHROME_PATH', ''),
+  // Email alerts (Resend), sent only for confirmed "site is down" incidents — see notify.ts.
+  resendApiKey: env('RESEND_API_KEY', ''),
+  alertEmailFrom: env('ALERT_EMAIL_FROM', 'QA Command Center <onboarding@resend.dev>'),
 };

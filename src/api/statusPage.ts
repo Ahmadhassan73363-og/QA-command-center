@@ -857,6 +857,7 @@ export async function renderStatusPage(): Promise<string> {
       </div>
 
       <div class="header-right">
+        <span style="font-size: 11px; color: var(--fg-subtle); margin-right: 10px;" id="lastSyncTime">Not synced yet</span>
         <span style="font-size: 11px; color: var(--fg-subtle); margin-right: 6px;" id="refreshCountdown">Synced</span>
         <button class="btn btn-sm" id="btnRunAll" onclick="runAllAudits()">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
@@ -1104,6 +1105,7 @@ export async function renderStatusPage(): Promise<string> {
         state.incidents = data.incidents || [];
         state.overview = data.overview || {};
         state.lastFetchTime = new Date();
+        updateLastSyncUI();
 
         updateOverviewUI();
         renderSites();
@@ -1640,8 +1642,20 @@ export async function renderStatusPage(): Promise<string> {
 
     setInterval(autoRunChecks, AUTO_CHECK_INTERVAL_MS);
 
-    // Ticks the header countdown every second so it stays live between runs.
+    // Shows when the dashboard data was last pulled (any fetchDashboard call — the 5s
+    // background poll, a manual Refresh click, or after an auto-check run).
+    function updateLastSyncUI() {
+      const el = document.getElementById('lastSyncTime');
+      if (!el || !state.lastFetchTime) return;
+      const time = state.lastFetchTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const secsAgo = Math.max(0, Math.round((Date.now() - state.lastFetchTime.getTime()) / 1000));
+      const ago = secsAgo < 2 ? 'just now' : secsAgo < 60 ? secsAgo + 's ago' : Math.round(secsAgo / 60) + 'm ago';
+      el.textContent = 'Last synced ' + time + ' (' + ago + ')';
+    }
+
+    // Ticks the header countdown and the "last synced" relative time every second.
     setInterval(() => {
+      updateLastSyncUI();
       const countdown = document.getElementById('refreshCountdown');
       if (!countdown || autoCheckRunning) return;
       const secsLeft = Math.max(0, Math.round((nextAutoCheckAt - Date.now()) / 1000));
